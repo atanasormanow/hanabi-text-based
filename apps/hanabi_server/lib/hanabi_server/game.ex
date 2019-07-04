@@ -8,7 +8,18 @@ defmodule Hanabi.Game do
   @type rank :: 0..5
   @type colr :: :red | :green | :blue | :white | :yellow
   @type card :: {rank, colr}
-  @type hand :: {[card], [card]}
+  @type info :: {rank | nil, colr | nil}
+  @type hand :: {[card], [info]}
+  @type play :: %{required(colr) => rank}
+
+  @type state :: %{
+    play: play,
+    discard: [card],
+    deck: [card],
+    hands: [hand],
+    hints: hint,
+    bombs: bomb
+  }
 
   @default_colors [:r,:g,:b,:w,:y]
   @default_ranks [1,1,1,2,2,3,3,4,4,5]
@@ -26,9 +37,9 @@ defmodule Hanabi.Game do
   @impl true
   def init(player_count) do
     state = init_state(player_count)
-    IO.puts("Init successful!")
+    IO.inspect(state.hands)
 
-    {:ok, state, {:continue, :send_feedback}}
+    {:ok, state, {:continue, :feedback}}
   end
 
   #############
@@ -49,7 +60,7 @@ defmodule Hanabi.Game do
           end
         )
       },
-      {:continue, :send_feedback}
+      {:continue, :feedback}
     }
   end
 
@@ -67,7 +78,7 @@ defmodule Hanabi.Game do
          end
         )
       },
-      {:continue, :send_feedback}
+      {:continue, :feedback}
     }
   end
 
@@ -110,7 +121,7 @@ defmodule Hanabi.Game do
         discard: discard_new,
         deck: deck_new,
         hands: %{state.hands | player_index => hand_new}
-      }, {:continue, :send_feedback}
+      }, {:continue, :feedback}
     }
   end
 
@@ -135,15 +146,15 @@ defmodule Hanabi.Game do
         hands: %{state.hands | player_index => hand_new},
         hints: state.hints + 1
       },
-      {:continue, :send_feedback}
+      {:continue, :feedback}
     }
   end
 
   @impl true
-  def handle_continue(:send_feedback, state) do
+  def handle_continue(:feedback, state) do
     IO.puts("Sending feedback!")
     deck_size = Enum.count(state.deck)
-    GenServer.cast(Hanabi.Server, {:feedback, %{state | deck: deck_size}})
+    GenServer.cast(Hanabi.Server, {:send_feedback, %{state | deck: deck_size}})
 
     {:noreply, state}
   end
@@ -152,6 +163,7 @@ defmodule Hanabi.Game do
   # Private #
   ###########
 
+  @spec init_state(number) :: state
   defp init_state(player_count) do
     deck = create_deck(@default_colors, @default_ranks)
     {hands, deck} = deal(deck, player_count)
@@ -186,7 +198,7 @@ defmodule Hanabi.Game do
     |> Enum.zip(colors)
   end
 
-  @spec deal([card], number) :: [{[card], [hand]}]
+  @spec deal([card], number) :: {[hand], [card]}
   defp deal(deck, player_count) do
     cards_per_hand = cards_per_player(player_count)
     init_info = List.duplicate({nil, nil}, cards_per_hand)
@@ -194,7 +206,7 @@ defmodule Hanabi.Game do
 
     dealt =
       Enum.chunk_every(dealt, cards_per_hand, cards_per_hand)
-      |> Enum.map(fn h -> Enum.zip(h, init_info) end)
+      |> Enum.map(fn h -> {h, init_info} end)
 
     {dealt, deck}
   end
@@ -251,6 +263,8 @@ defmodule Hanabi.Game do
     }
   end
 
+  @spec discard_card(play, [card], [card], hand, number)
+  :: {play, [card], [card], hand}
   defp play_card(play, discard, deck, hand, card_index) do
     {rank, color} =
       elem(hand, 0)
@@ -266,6 +280,8 @@ defmodule Hanabi.Game do
     }
   end
 
+  @spec discard_card(play, [card], [card], hand, number)
+  :: {play , [card], [card], hand}
   defp discard_card(play, discard, deck, hand, card_index) do
     discard_card =
       elem(hand, 0)

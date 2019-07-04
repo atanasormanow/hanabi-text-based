@@ -38,7 +38,8 @@ defmodule Hanabi.Player do
     case :gen_tcp.recv(sock, 0) do
 
       {:ok, msg} ->
-        index = :erlang.term_to_binary(msg)
+        index = :erlang.binary_to_term(msg)
+        IO.puts(index)
         :inet.setopts(sock, active: true)
         {:noreply, {sock, index}}
 
@@ -51,16 +52,15 @@ defmodule Hanabi.Player do
   def handle_info({:tcp, sock, packet}, {server_sock, index})
   when sock == server_sock do
 
-    IO.puts("Received a message")
     case :erlang.binary_to_term(packet) do
 
-      {:info, i, game_state} ->
-        IO.puts("Just info player #{i}")
-        parse_info(game_state)
+      {:info, game_state} ->
+        IO.puts("Just info player #{index}")
+        parse_info(game_state, index)
 
-      {:turn, i, game_state} ->
-        IO.puts("Your turn player #{i}")
-        parse_info(game_state)
+      {:turn, game_state} ->
+        IO.puts("Your turn player #{index}")
+        parse_info(game_state, index)
 
       {:invalid, reason} ->
         IO.puts("Invalid turn because: #{reason}")
@@ -128,14 +128,14 @@ defmodule Hanabi.Player do
   def play(card_index) do
     GenServer.cast(
       __MODULE__,
-      {:turn, {:play, card_index}}
+      {:turn, {:play, card_index + 1}}
     )
    end
 
   def discard(card_index) do
     GenServer.cast(
     __MODULE__,
-    {:turn, {:discard, card_index}}
+    {:turn, {:discard, card_index + 1}}
   )
   end
 
@@ -149,7 +149,11 @@ defmodule Hanabi.Player do
   ###########
 
   # TODO output fancy info with ANSI
-  defp parse_info(info) do
-    IO.inspect(info)
+  defp parse_info(info, index) do
+    IO.inspect(%{info |
+      hands: %{info.hands |
+        index => elem(info.hands[index], 1)
+      }
+    })
   end
 end
