@@ -27,6 +27,7 @@ defmodule Hanabi.Game do
   def init(player_count) do
     state = init_state(player_count)
     IO.puts("Init successful!")
+
     {:ok, state, {:continue, :send_feedback}}
   end
 
@@ -76,9 +77,12 @@ defmodule Hanabi.Game do
     {rank, color} =
       state.hands[player_index]
       |> Enum.at(card_index)
+
     desired_rank = rank - 1
+
     {play_new, discard_new, deck_new, hand_new} =
       case state.play[color] do
+
         ^desired_rank ->
           play_card(
             state.play,
@@ -87,6 +91,7 @@ defmodule Hanabi.Game do
             state.hands[player_index],
             card_index
           )
+
         _other ->
           discard_card(
             state.play,
@@ -96,6 +101,7 @@ defmodule Hanabi.Game do
             card_index
           )
       end
+
     {
       :noreply,
       %{
@@ -112,13 +118,14 @@ defmodule Hanabi.Game do
   def handle_cast({:discard, player_index, card_index}, state) do
     IO.puts("player #{player_index} discarded a card")
     {_, discard_new, deck_new, hand_new} =
-    discard_card(
-      state.play,
-      state.discard,
-      state.deck,
-      state.hands[player_index],
-      card_index
-    )
+      discard_card(
+        state.play,
+        state.discard,
+        state.deck,
+        state.hands[player_index],
+        card_index
+      )
+
     {
       :noreply,
       %{
@@ -137,6 +144,7 @@ defmodule Hanabi.Game do
     IO.puts("Sending feedback!")
     deck_size = Enum.count(state.deck)
     GenServer.cast(Hanabi.Server, {:feedback, %{state | deck: deck_size}})
+
     {:noreply, state}
   end
 
@@ -147,9 +155,11 @@ defmodule Hanabi.Game do
   defp init_state(player_count) do
     deck = create_deck(@default_colors, @default_ranks)
     {hands, deck} = deal(deck, player_count)
+
     hands =
       Enum.zip(1..6, hands)
       |> Map.new
+
     initial_play =
       Enum.zip(@default_colors, List.duplicate(0, 5))
       |> Map.new
@@ -167,7 +177,8 @@ defmodule Hanabi.Game do
   @spec create_deck([colr], [rank]) :: [card]
   defp create_deck(colors, ranks) do
     Enum.flat_map(ranks, fn r -> create_suite(colors, r) end)
-    |> Enum.shuffle end
+    |> Enum.shuffle
+  end
 
   @spec create_suite([colr], rank) :: [card]
   defp create_suite(colors, rank) do
@@ -180,9 +191,11 @@ defmodule Hanabi.Game do
     cards_per_hand = cards_per_player(player_count)
     init_info = List.duplicate({nil, nil}, cards_per_hand)
     {dealt, deck} = Enum.split(deck, player_count * cards_per_hand)
+
     dealt =
       Enum.chunk_every(dealt, cards_per_hand, cards_per_hand)
       |> Enum.map(fn h -> Enum.zip(h, init_info) end)
+
     {dealt, deck}
   end
 
@@ -228,6 +241,7 @@ defmodule Hanabi.Game do
   @spec draw_card(hand, [card]) :: {hand, [card]}
   defp draw_card({cards, info}, deck) do
     [top_card | deck_rest] = deck
+
     {
       {
         [top_card | cards],
@@ -241,7 +255,9 @@ defmodule Hanabi.Game do
     {rank, color} =
       elem(hand, 0)
       |> Enum.at(card_index)
+
     {hand_new, deck_new} = draw_card(deck, hand)
+
     {
       %{play | color => rank},
       discard,
@@ -254,12 +270,14 @@ defmodule Hanabi.Game do
     discard_card =
       elem(hand, 0)
       |> Enum.at(card_index)
+
     {hand_new, deck_new} =
       {
         elem(hand, 1) |> List.delete_at(card_index),
         elem(hand, 0) |> List.delete_at(card_index)
       }
       |> draw_card(deck)
+
     {
       play,
       [discard_card | discard],

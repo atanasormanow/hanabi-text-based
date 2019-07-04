@@ -19,54 +19,90 @@ defmodule Hanabi.Player do
 
   @impl true
   def init({game_key, ip, port}) do
-    case :gen_tcp.connect(ip, port, [:binary, packet: 4, active: true]) do
+    case :gen_tcp.connect(ip, port, [:binary, packet: 4, active: false]) do
+
       {:ok, sock} ->
         :ok = :gen_tcp.send(
           sock,
           :erlang.term_to_binary(game_key)
         )
-        {:ok, sock}
+        {:ok, sock, {:continue, :recv_index}}
+
       {:error, reason} ->
         {:stop, reason}
     end
   end
 
   @impl true
-  def handle_info({:tcp, sock, packet}, state)
-  when sock == state do
+  def handle_continue(:recv_index, sock) do
+    case :gen_tcp.recv(sock, 0) do
+
+      {:ok, msg} ->
+        index = :erlang.term_to_binary(msg)
+        :inet.setopts(sock, active: true)
+        {:noreply, {sock, index}}
+
+      {:error, reason} ->
+        {:stop, reason}
+    end
+  end
+
+  @impl true
+  def handle_info({:tcp, sock, packet}, {server_sock, index})
+  when sock == server_sock do
+
     IO.puts("Received a message")
     case :erlang.binary_to_term(packet) do
+
       {:info, i, game_state} ->
         IO.puts("Just info player #{i}")
         parse_info(game_state)
+
       {:turn, i, game_state} ->
         IO.puts("Your turn player #{i}")
         parse_info(game_state)
+
       {:invalid, reason} ->
         IO.puts("Invalid turn because: #{reason}")
+
       {:disconnect, reason} ->
         exit("Connection failed due to #{reason}")
+
       other ->
         IO.puts("Unexpected message: #{other}")
     end
-    {:noreply, state}
+
+    {:noreply, {server_sock, index}}
   end
 
   # TODO handle and reset via Supervisor for :tcp_closed
   @impl true
   def handle_info({:tcp_closed, _sock}, _state) do
     IO.puts("Server has disconnected")
+
     {:stop, :disconnected, nil}
   end
 
   @impl true
-  def handle_cast({:turn, msg}, state) do
-    IO.inspect(msg)
-    # NOTE {turn_atom, index}
-    bin = :erlang.term_to_binary(msg)
-    :gen_tcp.send(state, bin)
+  def handle_cast({:turn, msg}, {sock, player_index}) do
+    msg_from =
+      case msg do
+
+        {:play, card_index} ->
+          {:play, player_index, card_index}
+
+        {:discard, card_index} ->
+          {:discard, player_index, card_index}
+
+        other ->
+          other
+      end
+
+    msg_bin = :erlang.term_to_binary(msg_from)
+    :gen_tcp.send(sock, msg_bin)
     IO.puts("Sent turn info")
-    {:noreply, state}
+
+    {:noreply, {sock, player_index}}
   end
 
   #######
