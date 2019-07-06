@@ -1,6 +1,16 @@
 defmodule Hanabi.Player do
   @moduledoc """
-  Documentation for Hanabi.Player.
+  The Player module of the Hanabi player application.
+
+  This module uses the :gen_tcp to connect and communicate with the Hanabi.Server module.
+
+  It provides a basic interface for the actions players can perform during their turn.
+
+  The player has a GenServer behaveiour and its state is a tuple of two elements. The first
+  being the server's socket and the second - the player's index (in turn order).
+
+  By default the players initialize connection on port 4444 at 127.0.0.1 (localhost).
+  The options are set as :mod in mix.exs.
   """
 
   use GenServer
@@ -17,15 +27,21 @@ defmodule Hanabi.Player do
   # Callbacks #
   #############
 
+  @doc """
+  The connection to the server is established with the needed password(game key). The socket
+  of the connection is passed down with a continue instruction. The socket starts off with
+  {:active, false}
+  """
   @impl true
   def init({game_key, ip, port}) do
     case :gen_tcp.connect(ip, port, [:binary, packet: 4, active: false]) do
-
       {:ok, sock} ->
-        :ok = :gen_tcp.send(
-          sock,
-          :erlang.term_to_binary(game_key)
-        )
+        :ok =
+          :gen_tcp.send(
+            sock,
+            :erlang.term_to_binary(game_key)
+          )
+
         {:ok, sock, {:continue, :recv_index}}
 
       {:error, reason} ->
@@ -33,10 +49,13 @@ defmodule Hanabi.Player do
     end
   end
 
+  @doc """
+  The player's index is received from the server and passed down as part of the state.
+  The option :active is set to true.
+  """
   @impl true
   def handle_continue(:recv_index, sock) do
     case :gen_tcp.recv(sock, 0) do
-
       {:ok, msg} ->
         index = :erlang.binary_to_term(msg)
         IO.puts(index)
@@ -48,12 +67,12 @@ defmodule Hanabi.Player do
     end
   end
 
+  # TODO handle and revive for {:stop, reason}
+  @doc "Receive data from the server. And display it if its a valid game state"
   @impl true
   def handle_info({:tcp, sock, packet}, {server_sock, index})
-  when sock == server_sock do
-
+      when sock == server_sock do
     case :erlang.binary_to_term(packet) do
-
       {:info, game_state} ->
         IO.puts("Just info player #{index}")
         parse_info(game_state, index)
@@ -66,7 +85,7 @@ defmodule Hanabi.Player do
         IO.puts("Invalid turn because: #{reason}")
 
       {:disconnect, reason} ->
-        exit("Connection failed due to #{reason}")
+        {:stop, reason}
 
       other ->
         IO.puts("Unexpected message: #{other}")
@@ -75,7 +94,7 @@ defmodule Hanabi.Player do
     {:noreply, {server_sock, index}}
   end
 
-  # TODO handle and reset via Supervisor for :tcp_closed
+  @doc "Prompt and stop if the server disconnects."
   @impl true
   def handle_info({:tcp_closed, _sock}, _state) do
     IO.puts("Server has disconnected")
@@ -83,11 +102,14 @@ defmodule Hanabi.Player do
     {:stop, :disconnected, nil}
   end
 
+  @doc """
+  Send the player's turn data to the server. Include the player's index if its a play or
+  a discard action.
+  """
   @impl true
   def handle_cast({:turn, msg}, {sock, player_index}) do
     msg_from =
       case msg do
-
         {:play, card_index} ->
           {:play, player_index, card_index}
 
@@ -100,7 +122,6 @@ defmodule Hanabi.Player do
 
     msg_bin = :erlang.term_to_binary(msg_from)
     :gen_tcp.send(sock, msg_bin)
-    IO.puts("Sent turn info")
 
     {:noreply, {sock, player_index}}
   end
@@ -109,38 +130,48 @@ defmodule Hanabi.Player do
   # API #
   #######
 
-  def clue_color(target, color)
-  when is_atom(color) do
+  @doc """
+  Basic functions, representing the actions players can perform on their turn. All of them
+  except help/0 do a GenServer.cast/2.
+  """
+  # NOTE calling them should be more user friendly as a command line application
+
+  def clue(target, color)
+      when is_atom(color) do
     GenServer.cast(
       __MODULE__,
       {:turn, {:color_clue, target, color}}
     )
   end
 
-  def clue_rank(target, rank)
-  when is_number(rank) do
+  def clue(target, rank)
+      when is_number(rank) do
     GenServer.cast(
       __MODULE__,
       {:turn, {:rank_clue, target, rank}}
     )
-   end
+  end
+
+  def clue(_target, _clue) do
+    IO.puts("Invalid clue")
+  end
 
   def play(card_index) do
     GenServer.cast(
       __MODULE__,
-      {:turn, {:play, card_index + 1}}
+      {:turn, {:play, card_index - 1}}
     )
-   end
+  end
 
   def discard(card_index) do
     GenServer.cast(
-    __MODULE__,
-    {:turn, {:discard, card_index + 1}}
-  )
+      __MODULE__,
+      {:turn, {:discard, card_index - 1}}
+    )
   end
 
   # TODO hardcode some instructions
-  def help() do
+  def help do
     "git gud son"
   end
 
@@ -148,12 +179,10 @@ defmodule Hanabi.Player do
   # Private #
   ###########
 
+  # NOTE player hands should be filtered
+  #      in the server
   # TODO output fancy info with ANSI
   defp parse_info(info, index) do
-    IO.inspect(%{info |
-      hands: %{info.hands |
-        index => elem(info.hands[index], 1)
-      }
-    })
+    IO.inspect(%{info | hands: %{info.hands | index => elem(info.hands[index], 1)}})
   end
 end

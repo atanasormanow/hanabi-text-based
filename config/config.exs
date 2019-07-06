@@ -3,7 +3,7 @@
 use Mix.Config
 
 config :hanabi,
-  ip: {127,0,0,1},
+  ip: {127, 0, 0, 1},
   port: 4444
 
 # By default, the umbrella project as well as each child

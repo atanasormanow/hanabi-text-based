@@ -21,7 +21,7 @@ defmodule Hanabi.Player.MixProject do
       extra_applications: [:logger],
       mod: {
         Hanabi.Player.Application,
-        {"password", {127,0,0,1}, 4444}
+        {"password", {127, 0, 0, 1}, 4444}
       }
     ]
   end
