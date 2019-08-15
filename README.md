@@ -1,4 +1,3 @@
-# Hanabi
+### Text based Hanabi
 
-**TODO: Add description**
-
+A command line version of the card game Hanabi, made as a university project.
